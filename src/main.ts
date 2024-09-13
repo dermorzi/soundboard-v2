@@ -169,6 +169,7 @@ function playSound(cmd: string, usersound: boolean = false) {
   player.addEventListener("ended", () => {
     player.style.visibility = "hidden";
     player.currentTime = 0;
+    queue.next();
   });
 }
 

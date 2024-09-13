@@ -35,6 +35,7 @@ export default class Queue<T> {
       return;
     }
 
+    this.#running = true;
     this.#handler(entry);
 
     if (this.length > 0) {
