@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>JvPeek Soundboard</title>
+  <style>
+    body,
+    html {
+      padding: 0px;
+      margin: 0px;
+    }
+
+    body {
+      background-color: rgba(0, 0, 0, 0);
+      margin: 0px auto;
+      overflow: hidden;
+    }
+
+    video {
+      visibility: hidden;
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      width: 1920px;
+      height: 1080px;
+    }
+  </style>
+</head>
+
+<body onload="window.scrollTo(0, 0);">
+  <div id="soundsbox">loading players</div>
+  <div id="usersoundsbox">loading userplayers</div>
+
+  <script src="//unpkg.com/twitch-js@>2.0.0-beta.41"></script>
+  <script type="module">
+        const { Chat } = window.TwitchJs;
+        let token = undefined;
+        let username = undefined;
+        let soundsEnabled = true;
+        let sounds = "";
+        let usersounds = "";
+        let usersounds_played = [];
+        let volume = "1";
+        let ping_enabled = true;
+        let channel = "jvpeek";
+        let admins = ["jvpeek", "echtkpvl"];
+
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+
+        // Parse channel parameter
+        if (urlParams.has('channel')) channel = urlParams.get('channel');
+        if (urlParams.has('volume')) volume = urlParams.get('volume');
+        if (urlParams.has('noping')) ping_enabled = false;
+        if (urlParams.has('username') && urlParams.has('token')) {
+            username = urlParams.get('username');
+            token = urlParams.get('token');
+        }
+
+        function ping() {
+            if (ping_enabled == false) return;
+            if (soundsEnabled == false) return;
+
+            let url = 'ping.php?channel=' + channel;
+            fetch(url)
+            .catch(err => { throw err });
+        }
+
+        function reloadSounds() {
+            let url;
+            url = 'sounds/?channel=' + channel;
+            fetch(url)
+            .then(res => res.json())
+            .then((out) => {
+                sounds = out;
+                populate(sounds,"sounds");
+            })
+            .catch(err => { throw err });
+
+            url = 'usersounds/';
+            fetch(url)
+            .then(res => res.json())
+            .then((out) => {
+                usersounds = out;
+                populate(usersounds,"usersounds");
+            })
+            .catch(err => { throw err });
+        }
+        reloadSounds();
+
+        const handleMessage = (msg) => {
+            if (msg.event != "PRIVMSG") return;
+
+            if (usersounds != "" && !msg.message.startsWith("!")) {
+                if (usersounds_played.includes(msg.username)) {
+                    console.log(msg.username + " wurde schon begrüßt");
+                } else {
+                    console.log(msg.username + " wurde noch nicht begrüßt");
+                    playUserSound(msg.username + "-intro");
+                    usersounds_played.push(msg.username);
+                }
+            }
+
+            if (msg.message.startsWith("@") && msg.message.indexOf(" ") > 0)
+                msg.message = msg.message.substr(msg.message.indexOf(" ") + 1);
+
+            if (msg.message.startsWith("!")) {
+                if (sounds != "") {
+                    for (var i=0; i<sounds.length;i++) {
+                        if (msg.message.startsWith("!" + sounds[i].key)) {
+                            if (!sounds[i].username) {
+                                if (sounds[i].filetype=="webm") playVideo(sounds[i].key);
+                                if (sounds[i].filetype=="mp3") playSound(sounds[i].key);
+                            }
+                        }
+                    }
+
+                    if (msg.message.startsWith("!sounds")) {
+                        let soundlist = "Sounds:";
+
+                        for (var i=0; i<sounds.length;i++) {
+                            if (soundlist.length > 450) {
+                                chatsay(channel, soundlist);
+                                soundlist = "Ausserdem: ";
+                            }
+
+                            soundlist += " !" + sounds[i].key;
+                        }
+
+                        chatsay(channel, soundlist);
+                    }
+                }
+
+                if (msg.message.startsWith("!syscheck")) chatsay(channel, '/me soundboard is 𝗿𝗲𝗮𝗱𝘆');
+
+                if (msg.tags.mod == 1 || msg.tags.badges.broadcaster == "1" || admins.includes(msg.username)) {
+                    if (msg.message.startsWith("!reloadsounds")) {
+                        reloadSounds();
+                        chatsay(channel, '/me sounds aktualisiert');
+                    }
+
+                    if (msg.message.startsWith("!enablesounds")) {
+                        soundsEnabled = true;
+                        chatsay(channel, "sounds aktiviert");
+                    }
+
+                    if (msg.message.startsWith("!disablesounds")) {
+                        soundsEnabled = false;
+                        chatsay(channel, "sounds deaktiviert");
+                    }
+                }
+            }
+        };
+
+        function setVolumes() {
+            let soundElements = document.querySelectorAll('audio, video');
+            soundElements.forEach(function(soundItem) {
+                soundItem.volume = volume;
+                console.log(soundItem);
+            });
+
+            console.log(sounds);
+        }
+
+        function populate(sounds, target) {
+            console.log('Check out this JSON! ', sounds);
+            let players = "";
+            for (var i=0; i<sounds.length; i++) {
+                if (sounds[i].filetype == "mp3") {
+                    players += '<audio data-key="' + sounds[i].key + '"src="' + target + '/' + sounds[i].filename + '"></audio>';
+                }
+
+                if (sounds[i].filetype == "webm") {
+                    players += '<video data-key="' + sounds[i].key + '"> <source src="' + target + '/' + sounds[i].filename + '" type="video/webm" /></video>';
+                }
+            }
+
+            document.getElementById(target + "box").innerHTML = players;
+            setVolumes();
+        }
+
+        function playVideo(cmd) {
+            if (soundsEnabled == false) return;
+            const video = document.querySelector(`#soundsbox video[data-key="${cmd}"]`);
+            if (!video) return;
+
+            video.currentTime = 0;
+            video.style.visibility = "visible";
+            video.play();
+            video.addEventListener('ended', (event) => {
+                video.style.visibility = "hidden";
+                video.currentTime = 0;
+            });
+        }
+
+        function playSound(cmd) {
+            if (soundsEnabled == false) return;
+            const audio = document.querySelector(`#soundsbox audio[data-key="${cmd}"]`);
+            if (!audio) return;
+
+            audio.currentTime = 0;
+            audio.play();
+        }
+
+        function playUserSound(cmd) {
+            const audio = document.querySelector(`#usersoundsbox audio[data-key="${cmd}"]`);
+            const video = document.querySelector(`#usersoundsbox video[data-key="${cmd}"]`);
+
+            if (!audio && !video) return;
+            if (audio) {
+                audio.currentTime = 0;
+                audio.play();
+            }
+
+            if (video) {
+                video.currentTime = 0;
+                video.style.visibility = "visible";
+                video.play();
+                video.addEventListener('ended', (event) => {
+                    video.style.visibility = "hidden";
+                    video.currentTime = 0;
+                });
+            }
+        }
+
+        function chatsay(channel, text) {
+            if (token != undefined) {
+                chatobj.say(channel, text);
+            } else {
+                console.log(text);
+            }
+        }
+
+        const run = async () => {
+            const chat = new Chat({
+                token,
+                username,
+                log: { level: "warn" }
+            });
+
+            chat.on("*", (message) => {
+                handleMessage(message);
+            });
+
+            await chat.connect();
+            await chat.join(channel);
+            window.setInterval(ping, 20000);
+            return chat;
+        };
+
+        const chatobj = run();
+  </script>
+</body>
+
+</html>
