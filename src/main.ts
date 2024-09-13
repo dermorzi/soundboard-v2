@@ -34,6 +34,7 @@ const COIN_MAX = 100;
 var chat: any;
 var queue: Queue<[key: string, user: boolean]>;
 var activeUsers: Map<string, number> = new Map();
+var soundlist: string[] = [];
 
 function getConfig() {
   const queryString = window.location.search;
@@ -130,6 +131,19 @@ function populate(sounds: Sound[], target: 'usersounds' | 'sounds') {
     container.appendChild(player)
 
     config[target].set(username ? username : key, s);
+  }
+
+  if (target === 'sounds' && config.sounds) {
+    let msg = "Sounds:";
+
+    for (const [key] of config.sounds.keys()) {
+      if (msg.length > 450) {
+        soundlist.push(msg);
+        msg = "Ausserdem: ";
+      }
+
+      msg += " !" + key;
+    }
   }
 
   setVolumes();
@@ -238,18 +252,9 @@ const handleMessage = (msg: any) => {
 
   // generate list on populate
   if (cmd === "sounds") {
-    let soundlist = "Sounds:";
-
-    for (const [key] of config.sounds.entries()) {
-      if (soundlist.length > 450) {
-        chatsay(soundlist);
-        soundlist = "Ausserdem: ";
-      }
-
-      soundlist += " !" + key;
+    for (const msg of soundlist) {
+      chatsay(msg);
     }
-
-    chatsay(soundlist);
     return;
   }
 
