@@ -1,5 +1,5 @@
 import './style.css'
-import Queue from "./Queue"
+import { Chat } from 'twitch-js'
 
 interface Config {
   token?: string
@@ -16,6 +16,8 @@ interface Config {
   ping_enabled: boolean
   admins: string[]
   debug: boolean
+  devMode: boolean
+  apiPrefix: string
 }
 
 interface Sound {
@@ -23,7 +25,7 @@ interface Sound {
     key: string,
     filename: string,
     filetype: "mp3" | 'webm',
-    username?: string
+    aliases: string[]
 }
 
 type Player = HTMLAudioElement | HTMLVideoElement
@@ -31,10 +33,9 @@ type Player = HTMLAudioElement | HTMLVideoElement
 type LogLevel = "log" | "info" | "warn" | "error"
 
 const COIN_MAX = 100;
-var chat: any;
-var queue: Queue<[key: string, user: boolean]>;
-var activeUsers: Map<string, number> = new Map();
-var soundlist: string[] = [];
+let chat: any;
+let activeUsers: Map<string, number> = new Map();
+let soundlist: string[] = [];
 
 function getConfig() {
   const queryString = window.location.search;
@@ -48,6 +49,8 @@ function getConfig() {
     usersounds_played: [],
     volume: 1,
     debug: false,
+    devMode: false,
+    apiPrefix: '',
   };
 
   // Parse channel parameter
@@ -77,6 +80,10 @@ function getConfig() {
     config.debug = true
   }
 
+  if (urlParams.has('devMode')) {
+    config.apiPrefix = 'https://jvpeek.de/ext/sb/'
+  }
+
   return config;
 }
 
@@ -93,21 +100,22 @@ function ping() {
     return;
   }
 
-  fetch("ping.php?channel=" + config.channel)
+  fetch('ping.php?channel=' + config.channel)
     .catch(err => log(err, "error"));
 }
 
 function reloadSounds() {
-  fetch("sounds/?channel=" + config.channel)
+  fetch(`${config.apiPrefix}sounds/?channel=${config.channel}`)
     .then(res => res.json())
-    .then(json => populate(json, "sounds"))
+    .then(json => populateSounds(json, "sounds"))
     .catch(err => log(err, "error"));
 
-  fetch("usersounds/")
+  fetch(`${config.apiPrefix}usersounds/`)
     .then((res) => res.json())
-    .then(json => populate(json, "usersounds"))
+    .then(json => populateSounds(json, "usersounds"))
     .catch((err) => log(err, "error"));
 }
+
 reloadSounds();
 
 function createPlayer(type: 'AUDIO' | 'VIDEO', key: string, filename: string, target: string) {
@@ -117,7 +125,7 @@ function createPlayer(type: 'AUDIO' | 'VIDEO', key: string, filename: string, ta
   return player;
 }
 
-function populate(sounds: Sound[], target: 'usersounds' | 'sounds') {
+function populateSounds(sounds: Sound[], target: 'usersounds' | 'sounds') {
   log(`Check out this JSON! ${sounds}`);
   const container = document.getElementById(target + "box") as HTMLDivElement;
   container.innerHTML = '';
@@ -183,7 +191,6 @@ function playSound(cmd: string, usersound: boolean = false) {
   player.addEventListener("ended", () => {
     player.style.visibility = "hidden";
     player.currentTime = 0;
-    queue.next();
   });
 }
 
@@ -204,7 +211,7 @@ const countCoins = (() => {
 
     if (count >= COIN_MAX) {
       const key = Math.round(Math.random()) ? "1up" : "gameover";
-      queue.enqueue([key, false]);
+      playSound(key, false);
       count = 0;
 
       let lives = activeUsers.get(username) as number;
@@ -233,7 +240,7 @@ const handleMessage = (msg: any) => {
       log(msg.username + " wurde schon begrüßt");
     } else {
       log(msg.username + " wurde noch nicht begrüßt");
-      queue.enqueue([msg.username + "-intro", true]);
+      playSound(msg.username + "-intro", true);
       config.usersounds_played.push(msg.username);
       return;
     }
@@ -243,14 +250,14 @@ const handleMessage = (msg: any) => {
     msg.message = msg.message.substr(msg.message.indexOf(" ") + 1);
   }
 
-  if (!msg.message.startsWith("!") || !config.sounds) {
+  if (msg.message.startsWith("!") !== true || !config.sounds) {
     return;
   }
 
   const [cmdRaw, value] = msg.message.split(' ')
   const cmd = cmdRaw.slice(1);
 
-  // generate list on populate
+  // generate list on populateSounds
   if (cmd === "sounds") {
     for (const msg of soundlist) {
       chatsay(msg);
@@ -268,7 +275,6 @@ const handleMessage = (msg: any) => {
     msg.tags.badges.broadcaster == "1" ||
     config.admins.includes(msg.username)
   ) {
-
     switch (cmd) {
       case "reloadsounds":
         reloadSounds();
@@ -299,7 +305,7 @@ const handleMessage = (msg: any) => {
       return;
     }
 
-    queue.enqueue([cmd, false]);
+    playSound(cmd, false);
 
     if (cmd === 'coin') {
       countCoins(msg.username);
@@ -308,18 +314,10 @@ const handleMessage = (msg: any) => {
 };
 
 window.addEventListener("load", async function () {
-  if (!("TwitchJs" in window)) {
-    return;
-  }
-
-  queue = new Queue((entry) => playSound(...entry));
-
-  const { Chat } = window.TwitchJs as any;
-
   chat = new Chat({
     token: config.token,
     username: config.username,
-    log: { level: "warn" },
+    log: { level: "info" },
   });
 
   chat.on("*", handleMessage);
