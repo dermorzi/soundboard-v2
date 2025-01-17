@@ -89,10 +89,19 @@ function getConfig() {
 
 const config: Config = getConfig();
 
-function log(msg: string | Error, level: LogLevel = 'info') {
-  if (config.debug) {
-    console[level](msg);
+function log(msg: string | unknown[] | Error, level: LogLevel = 'info') {
+  if (config.debug === false) {
+    return
   }
+
+  const logger = console[level]
+
+  if (typeof msg === 'string' || msg instanceof Error) {
+    logger(msg)
+    return
+  }
+
+  logger(...msg)
 }
 
 function ping() {
@@ -121,12 +130,12 @@ reloadSounds();
 function createPlayer(type: 'AUDIO' | 'VIDEO', key: string, filename: string, target: string) {
   const player = document.createElement(type) as HTMLMediaElement;
   player.dataset.key = key;
-  player.src = `${target}/${filename}`;
+  player.src = `${config.apiPrefix}${target}/${filename}`;
   return player;
 }
 
 function populateSounds(sounds: Sound[], target: 'usersounds' | 'sounds') {
-  log(`Check out this JSON! ${sounds}`);
+  log(['Check out this JSON!:', sounds]);
   const container = document.getElementById(target + "box") as HTMLDivElement;
   container.innerHTML = '';
 
